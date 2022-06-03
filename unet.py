@@ -72,6 +72,11 @@ class UNet(nn.Module):
         
         return out
 
+    def get_features(self, x):
+        x, _ = self.downsample_block_1.forward(x)
+        x, _ = self.downsample_block_2.forward(x)
+        x, _ = self.downsample_block_3.forward(x)
+        return x
         
 if __name__=='__main__':
     x = torch.rand(16,1,224,224)
