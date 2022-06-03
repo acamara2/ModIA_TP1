@@ -9,12 +9,15 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
+import tensorflow as tf  
+import tensorboard as tb  
+tf.io.gfile = tb.compat.tensorflow_stub.io.gfile
 
 from mnist_net import MNISTNet
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-def train(net, optimizer, loader, epochs=10):
+def train(net, optimizer, loader, writer,epochs=10):
     criterion = nn.CrossEntropyLoss()
     for epoch in range(epochs):
         running_loss = []
@@ -28,6 +31,7 @@ def train(net, optimizer, loader, epochs=10):
             loss.backward()
             optimizer.step()
             t.set_description(f'training loss: {mean(running_loss)}')
+        writer.add_scalar('training loss', mean(running_loss), epoch)
 
 def test(model, dataloader):
     test_corrects = 0
@@ -46,16 +50,17 @@ if __name__=='__main__':
   parser = argparse.ArgumentParser()
   
   parser.add_argument('--exp_name', type=str, default = 'MNIST', help='experiment name')
-  parser.add_argument(...)
-  parser.add_argument(...)
-  parser.add_argument(...)
+  parser.add_argument('--epochs', type=int, default = 5, help='number of train epochs')
+  parser.add_argument('--batch_size', type=int, default = 64, help='Batch size')
+  parser.add_argument('--lr', type=int, default = 1e-3, help='Learning rate')
+  parser.add_argument('--optimizer', type=str, default = "sgd", help='choose between : sgd,adagrad,adam')
 
   args = parser.parse_args()
   exp_name = args.exp_name
-  epochs = ...
-  batch_size = ...
-  lr = ...
-
+  epochs = args.epochs
+  batch_size = args.batch_size
+  lr = args.lr
+  opti = args.optimizer
   # transforms
   transform = transforms.Compose(
       [transforms.ToTensor(),
@@ -69,12 +74,33 @@ if __name__=='__main__':
   trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=2)
   testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size, shuffle=False, num_workers=2)
   
-  net = ...
+  net = MNISTNet()
   # setting net on device(GPU if available, else CPU)
   net = net.to(device)
-  optimizer = optim.SGD(...)
-
-  train(...)
-  test_acc = test(...)
+  if opti =="sgd" :
+    optimizer = optim.SGD(net.parameters(),lr)
+  elif opti =="adam" :
+    optimizer = optim.Adam(net.parameters(),lr)
+  else : 
+    optimizer = optim.Adam(net.parameters(),lr)
+  # tensorboard writer
+  writer = SummaryWriter(f'runs/MNIST')
+  train(net, optimizer, trainloader,writer,epochs=epochs)
+  test_acc = test(net,  testloader)
   print(f'Test accuracy:{test_acc}')
   torch.save(net.state_dict(), "mnist_net.pth")
+  #add embeddings to tensorboard
+  perm = torch.randperm(len(trainset.data))
+  images, labels = trainset.data[perm][:256], trainset.targets[perm][:256]
+  images = images.unsqueeze(1).float().to(device)
+  with torch.no_grad():
+    embeddings = net.get_features(images)
+    writer.add_embedding(embeddings,
+                  metadata=labels,
+                  label_img=images, global_step=1)
+
+  # save networks computational graph in tensorboard
+  writer.add_graph(net, images)
+  # save a dataset sample in tensorboard
+  img_grid = torchvision.utils.make_grid(images[:64])
+  writer.add_image('mnist_images', img_grid)
