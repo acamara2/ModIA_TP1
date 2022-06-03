@@ -2,6 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import tensorflow as tf  
+import tensorboard as tb  
+tf.io.gfile = tb.compat.tensorflow_stub.io.gfile
+
 def double_conv(in_channels, out_channels):
     # returns a block compsed of two Convolution layers with ReLU activation function
     return nn.Sequential(
